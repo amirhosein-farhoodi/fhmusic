@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.wav
+.DS_Store
+solo/
+demo_timeline.txt
+web/node_modules/
+web/dist/
+*.tsbuildinfo
