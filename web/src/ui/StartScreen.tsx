@@ -2,6 +2,7 @@ import { Play } from "lucide-react";
 import type { ReactNode } from "react";
 import { useDJ } from "../store";
 import { Logo } from "./Brand";
+import { TipButton } from "./Donate";
 
 export function StartScreen() {
   const status = useDJ((s) => s.status);
@@ -52,6 +53,10 @@ export function StartScreen() {
           <span><Kbd>↑</Kbd><Kbd>↓</Kbd> tempo</span>
           <span><Kbd>D</Kbd> DJ mode</span>
           <span><Kbd>double-click</Kbd> visuals only</span>
+        </div>
+
+        <div className="mt-6 flex justify-center">
+          <TipButton withLabel />
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { BpmControl } from "./ui/BpmControl";
 import { LivePill, Logo } from "./ui/Brand";
 import { StylePicker, Transport } from "./ui/Controls";
 import { DJPanel } from "./ui/DJPanel";
+import { TipButton } from "./ui/Donate";
 import { NowPlaying } from "./ui/NowPlaying";
 import { StartScreen } from "./ui/StartScreen";
 
@@ -221,6 +222,7 @@ export default function App() {
         <div className="pointer-events-auto">{started && <Logo />}</div>
         <div className="pointer-events-auto hidden lg:block">{started && !djOpen && <StylePicker />}</div>
         <div className="pointer-events-auto flex items-center gap-2 justify-self-end">
+          {started && <TipButton />}
           {started && <VisualsButton />}
           {started && <DJButton />}
           <div className="hidden sm:block">
