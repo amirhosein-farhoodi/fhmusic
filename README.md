@@ -25,20 +25,23 @@ Then open **http://127.0.0.1:8000** and press **Start the party**.
 
 Options: `uv run fhmusic --port 9000`.
 
-## Develop the frontend (hot reload)
+## Develop (hot reload)
 
 ```bash
-uv run fhmusic          # terminal 1: backend on :8000
-cd web && npm run dev   # terminal 2: open the URL Vite prints (proxies /ws to :8000)
+./dev.sh   # backend on :8000 + frontend on :5173 (opens the browser); Ctrl+C stops both
 ```
+
+It installs the web dependencies on first run. Locally the app always talks to the
+local backend; the Railway address in `netlify.toml` only applies to Netlify builds.
 
 ## Deploy (Netlify + Railway)
 
 - **Backend → Railway.** Railway builds the [`Dockerfile`](Dockerfile) (engine + WebSocket
   server only) and sets `PORT`. Generate a public domain under Settings → Networking.
-- **Frontend → Netlify.** [`netlify.toml`](netlify.toml) builds `web/` and publishes
-  `web/dist`. Set the environment variable `VITE_WS_URL` to the Railway address,
-  e.g. `wss://your-app.up.railway.app/ws`, then redeploy (it is baked in at build time).
+- **Frontend → Netlify.** [`netlify.toml`](netlify.toml) builds `web/`, publishes
+  `web/dist`, and sets `VITE_WS_URL` to the Railway address
+  (`wss://fhmusic-production.up.railway.app/ws`). It is baked in at build time, so
+  change it there and push if the backend address ever changes.
 
 Without `VITE_WS_URL` the app connects to `/ws` on its own host, which is what local
 development and `uv run fhmusic` use.

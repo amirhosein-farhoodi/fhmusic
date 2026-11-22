@@ -1,5 +1,6 @@
-# Frontend only. Set VITE_WS_URL in Netlify (Site configuration → Environment variables)
-# to your Railway backend, e.g. wss://your-app.up.railway.app/ws
+# Frontend only. The backend (engine + WebSocket) runs on Railway.
+# VITE_WS_URL is baked in at build time and only applies to Netlify builds;
+# locally the app connects to /ws on its own host (see ./dev.sh).
 [build]
   base = "web"
   command = "npm run build"
@@ -7,3 +8,4 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  VITE_WS_URL = "wss://fhmusic-production.up.railway.app/ws"
