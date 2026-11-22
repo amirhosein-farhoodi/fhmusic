@@ -51,6 +51,7 @@ export function StartScreen() {
           <span><Kbd>→</Kbd> next track</span>
           <span><Kbd>↑</Kbd><Kbd>↓</Kbd> tempo</span>
           <span><Kbd>D</Kbd> DJ mode</span>
+          <span><Kbd>double-click</Kbd> visuals only</span>
         </div>
       </div>
     </div>

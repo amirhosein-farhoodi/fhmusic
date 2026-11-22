@@ -143,3 +143,35 @@ button:focus-visible,
 button:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* ---- visuals-only mode: the UI slides away and stops catching the mouse */
+.ui-layer {
+  transition:
+    opacity 500ms ease,
+    transform 650ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+[data-ui="hidden"] {
+  cursor: none;
+}
+[data-ui="hidden"] .ui-layer {
+  opacity: 0;
+}
+[data-ui="hidden"] .ui-layer,
+[data-ui="hidden"] .ui-layer * {
+  pointer-events: none !important;
+}
+[data-ui="hidden"] .ui-top {
+  transform: translateY(-28px);
+}
+[data-ui="hidden"] .ui-bottom {
+  transform: translateY(28px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-layer {
+    transition: opacity 300ms ease;
+  }
+  [data-ui="hidden"] .ui-top,
+  [data-ui="hidden"] .ui-bottom {
+    transform: none;
+  }
+}

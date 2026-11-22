@@ -1,4 +1,4 @@
-import { Minus, Plus } from "lucide-react";
+import { Heart, Minus, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import { features } from "../scene/features";
@@ -63,6 +63,19 @@ export function BeatDots() {
   );
 }
 
+/** The top of the tempo range belongs to Negin, who likes it fast. */
+export const NEGIN_BPM = 171;
+export const isNegin = (bpm: number) => Math.round(bpm) === NEGIN_BPM;
+
+export function NeginTag({ className = "" }: { className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap font-bold text-bubblegum ${className}`}>
+      <Heart className="size-[1.1em] animate-pulse" fill="currentColor" strokeWidth={0} />
+      (Negin's BPM)
+    </span>
+  );
+}
+
 export function BpmControl() {
   const meta = useDJ((s) => s.meta);
   const server = useDJ((s) => s.server);
@@ -84,9 +97,13 @@ export function BpmControl() {
         <div className="font-display text-4xl font-black leading-none tabular-nums text-butter sm:mt-1 sm:text-5xl">
           {Math.round(shown)}
         </div>
-        <div className="mt-1 hidden h-4 text-xs font-medium text-lavender/80 tabular-nums sm:block">
-          {gliding ? `gliding · ${live.toFixed(1)}` : "BPM"}
-        </div>
+        {isNegin(shown) ? (
+          <NeginTag className="mt-1 h-4 animate-pop text-[11px]" />
+        ) : (
+          <div className="mt-1 hidden h-4 text-xs font-medium text-lavender/80 tabular-nums sm:block">
+            {gliding ? `gliding · ${live.toFixed(1)}` : "BPM"}
+          </div>
+        )}
         <div className="mt-1.5">
           <BeatDots />
         </div>

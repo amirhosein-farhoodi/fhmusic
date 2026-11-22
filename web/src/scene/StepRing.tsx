@@ -37,7 +37,9 @@ export function StepRing() {
       const a = (i / STEPS) * Math.PI * 2;
       // distance behind the playhead, in steps (0 = lit now)
       const behind = (head - i + STEPS) % STEPS;
-      const glow = features.playing ? Math.exp(-behind * 0.9) : 0;
+      // a build-up stretches the trail behind the playhead; the drop lights every step at once
+      const trail = 0.9 - features.build * 0.55;
+      const glow = features.playing ? Math.max(Math.exp(-behind * trail), features.drop * 0.9) : 0;
       const down = i % 4 === 0;
       const base = down ? c.pink : c.grape;
       c.tmp.copy(base).multiplyScalar(down ? 0.9 : 0.75);
@@ -53,7 +55,7 @@ export function StepRing() {
     }
     m.instanceMatrix.needsUpdate = true;
     m.instanceColor!.needsUpdate = true;
-    group.current!.rotation.y += dt * 0.08;
+    group.current!.rotation.y += dt * (0.08 + features.build * features.build * 0.6 + features.drop * 0.5);
   });
 
   return (

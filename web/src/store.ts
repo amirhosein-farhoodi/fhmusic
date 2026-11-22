@@ -5,6 +5,16 @@ import type { BarMeta, ServerState, StyleInfo } from "./audio/types";
 
 export type Status = "idle" | "starting" | "playing" | "paused";
 export type Pad = "build" | "drop" | "breakdown";
+export type Shape = "soda" | "star";
+
+const SHAPE_KEY = "fhmusic.shape";
+const savedShape = (): Shape => {
+  try {
+    return localStorage.getItem(SHAPE_KEY) === "soda" ? "soda" : "star"; // starburst by default
+  } catch {
+    return "star";
+  }
+};
 export const CHANNELS: Channel[] = ["kick", "drums", "bass", "synths", "atmos"];
 const DEFAULT_LEVELS = { kick: 1, drums: 1, bass: 1, synths: 1, atmos: 1 } as Record<Channel, number>;
 const DEFAULT_MUTES = { kick: false, drums: false, bass: false, synths: false, atmos: false } as Record<Channel, boolean>;
@@ -18,6 +28,14 @@ interface DJState {
   server: ServerState;
   skipping: boolean; // "next" pressed, waiting for the mix to start
   error: string | null;
+
+  // ---- visuals-only mode (double-click the stage): the UI hides until the mouse moves
+  clean: boolean;
+  setClean: (on: boolean) => void;
+
+  // ---- shape of the centre piece: the spiky starburst (default) or the original soda blob
+  shape: Shape;
+  toggleShape: () => void;
 
   // ---- DJ mode
   djOpen: boolean;
@@ -53,10 +71,12 @@ export const useDJ = create<DJState>((set, get) => ({
   connected: false,
   meta: null,
   styles: [],
-  bpmRange: [100, 170],
+  bpmRange: [100, 171],
   server: { target_bpm: 135, bpm_locked: false, locked_style: null },
   skipping: false,
   error: null,
+  clean: false,
+  shape: savedShape(),
   djOpen: false,
   fx: DEFAULT_FX,
   levels: DEFAULT_LEVELS,
@@ -133,8 +153,20 @@ export const useDJ = create<DJState>((set, get) => ({
     set((st) => ({ server: { ...st.server, locked_style: key }, skipping: key !== null }));
   },
 
+  toggleShape: () => {
+    const shape: Shape = get().shape === "soda" ? "star" : "soda";
+    try {
+      localStorage.setItem(SHAPE_KEY, shape);
+    } catch {
+      /* private mode: just don't remember it */
+    }
+    set({ shape });
+  },
+
+  setClean: (on) => set(on ? { clean: true, djOpen: false } : { clean: false }),
+
   // ---- DJ mode
-  toggleDJ: (open) => set((st) => ({ djOpen: open ?? !st.djOpen })),
+  toggleDJ: (open) => set((st) => ({ djOpen: open ?? !st.djOpen, clean: (open ?? !st.djOpen) ? false : st.clean })),
 
   setFx: (patch) => {
     const fx = { ...get().fx, ...patch };

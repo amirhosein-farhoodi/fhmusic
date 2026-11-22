@@ -56,6 +56,8 @@ development and `uv run fhmusic` use.
 | Give tempo back to the DJ | Manual · reset | `A` |
 | Lock a style | chips at the top | |
 | Open DJ Mode | DJ Mode | `D` (`Esc` closes) |
+| Visuals only (fullscreen, controls hide until the mouse moves) | Visuals, or double-click the stage | `Esc` exits |
+| Switch the centre piece (starburst / soda blob) | | `S` |
 
 ## DJ Mode (for DJs)
 

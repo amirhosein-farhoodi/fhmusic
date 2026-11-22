@@ -63,9 +63,10 @@ export function Stickers() {
       m.position.set(Math.cos(a) * o.r, o.y + Math.sin(t * 0.7 + i) * 0.25, Math.sin(a) * o.r * 0.45 - 0.8);
       m.rotation.x += dt * o.spin.x * (0.4 + features.energy);
       m.rotation.y += dt * o.spin.y * (0.4 + features.energy);
-      // bop: alternate stickers pop on alternating beats
+      // bop: alternate stickers pop on alternating beats, the others answer the snare
       const onBeat = Math.floor(features.step / 4) % 2 === i % 2;
-      m.scale.setScalar(1 + (onBeat ? features.kick * 0.35 : 0));
+      const hit = onBeat ? features.kick * 0.35 : features.snare * 0.3;
+      m.scale.setScalar((1 + hit + features.drop * 0.5) * (1 - features.build * features.build * 0.3));
     });
   });
 

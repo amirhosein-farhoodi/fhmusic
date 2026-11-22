@@ -3,7 +3,7 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { DEFAULT_FX } from "../audio/fx";
 import type { Channel } from "../audio/player";
 import { CHANNELS, type Pad, useDJ } from "../store";
-import { BeatDots } from "./BpmControl";
+import { BeatDots, isNegin, NeginTag } from "./BpmControl";
 
 // ---------------------------------------------------------------- keyboard map
 //
@@ -191,7 +191,11 @@ function Tempo() {
         </button>
         <div className="flex flex-1 items-baseline justify-center gap-2">
           <span className="font-display text-4xl font-black leading-none tabular-nums text-butter">{Math.round(shown)}</span>
-          <span className="text-xs font-bold text-lavender">BPM</span>
+          {isNegin(shown) ? (
+            <NeginTag className="animate-pop text-xs" />
+          ) : (
+            <span className="text-xs font-bold text-lavender">BPM</span>
+          )}
         </div>
         <button aria-label="Faster" className={btn} onClick={() => nudge(1)}>
           <Plus className="size-5" strokeWidth={3} />

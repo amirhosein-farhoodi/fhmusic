@@ -22,7 +22,7 @@ from .synth import SR
 from .track import SECTION_KINDS, BarCtx, Section, Track
 
 BUS_SECONDS = 20
-BPM_RANGE = (100.0, 170.0)
+BPM_RANGE = (100.0, 171.0)  # 171 is Negin's BPM
 SKIP_BARS = 4  # length of the quick mix when the user presses "next"
 CHANNELS = ("kick", "drums", "bass", "synths", "atmos")
 # DJ performance pads: sections inserted right now, then the track carries on
