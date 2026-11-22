@@ -8,6 +8,9 @@ Protocol (one WebSocket per listener, each gets its own engine):
     {"type": "bpm_auto"}                   give the tempo back to the DJ
     {"type": "next"}                       quick mix into the next track
     {"type": "style", "value": "ebm"|null} lock a style (null = auto)
+    {"type": "mix", "channels": {...}}     DJ channel faders (kick/drums/bass/synths/atmos, 0..1.5)
+    {"type": "perform", "action": "build"|"drop"|"breakdown"}
+    {"type": "loop", "bars": 0|1|2|4}      loop the last N bars (0 = off)
 
   server -> client
     JSON text  {"type": "hello"|"state", ...}
@@ -75,6 +78,15 @@ async def stream(ws: WebSocket):
                 engine.user_bpm = None
             elif kind == "next":
                 engine.command("next")
+            elif kind == "mix":
+                engine.command("mix", {k: float(v) for k, v in dict(msg.get("channels", {})).items()})
+                continue
+            elif kind == "perform":
+                engine.command("perform", str(msg.get("action")))
+                continue
+            elif kind == "loop":
+                engine.command("loop", int(msg.get("bars", 0)))
+                continue
             elif kind == "style":
                 value = msg.get("value")
                 engine.command("style", value if value in STYLES else None)

@@ -24,6 +24,14 @@ from .track import SECTION_KINDS, BarCtx, Section, Track
 BUS_SECONDS = 20
 BPM_RANGE = (100.0, 170.0)
 SKIP_BARS = 4  # length of the quick mix when the user presses "next"
+CHANNELS = ("kick", "drums", "bass", "synths", "atmos")
+# DJ performance pads: sections inserted right now, then the track carries on
+PERFORM = {
+    "build": [("tension", 4), ("peak", 16)],
+    "drop": [("peak", 16)],
+    "breakdown": [("breakdown", 8), ("tension", 4), ("peak", 16)],
+}
+LOOP_CHOICES = (0, 1, 2, 4)
 
 
 class Engine:
@@ -41,6 +49,10 @@ class Engine:
         self.last_status: dict = {}
         self.user_bpm: float | None = None   # set when the user takes over the tempo
         self.commands: deque = deque()        # thread-safe queue of live controls
+        self.mix = {c: 1.0 for c in CHANNELS}  # DJ channel faders
+        self.history: deque = deque(maxlen=max(LOOP_CHOICES))  # last bars, for looping
+        self.loop_bars = 0
+        self.loop_pos = 0
 
         n = BUS_SECONDS * SR
         self.dry = np.zeros((2, n))
@@ -67,7 +79,8 @@ class Engine:
 
     def command(self, name: str, value=None):
         """Queue a live control. Safe to call from another thread; applied at the next bar.
-        name: 'bpm' (float) | 'bpm_auto' | 'style' (key or None) | 'next'"""
+        name: 'bpm' (float) | 'bpm_auto' | 'style' (key or None) | 'next'
+              | 'mix' ({channel: gain}) | 'perform' ('build'|'drop'|'breakdown') | 'loop' (0|1|2|4)"""
         self.commands.append((name, value))
 
     def _apply_commands(self):
@@ -86,7 +99,32 @@ class Engine:
                     else:
                         self._skip()
             elif name == "next":
+                self.loop_bars = 0
                 self._skip()
+            elif name == "mix":
+                for ch, g in value.items():
+                    if ch in self.mix:
+                        self.mix[ch] = float(np.clip(g, 0.0, 1.5))
+            elif name == "perform":
+                self._perform(value)
+            elif name == "loop":
+                self.loop_bars = value if value in LOOP_CHOICES else 0
+                self.loop_pos = 0
+
+    def _perform(self, action: str):
+        """DJ pads: jump into a build-up, a drop or a breakdown right now."""
+        if action not in PERFORM or self.nxt is not None:  # not while mixing tracks
+            return
+        self.loop_bars = 0
+        t = self.cur
+        new = []
+        for kind, bars in PERFORM[action]:
+            e, core, pool = SECTION_KINDS[kind]
+            new.append(Section(kind, bars, e, set(core), set(pool)))
+        t.sections = t.sections[:t.sec_idx + 1] + new + t.sections[t.sec_idx + 1:]
+        t.sec_idx += 1
+        t.bar_in_sec = 0
+        t.finished = False
 
     def _skip(self):
         """Start a quick DJ mix into the next track (or finish the current mix now)."""
@@ -104,13 +142,19 @@ class Engine:
     def render_bar(self) -> np.ndarray:
         """Render the next bar. Returns stereo float array, shape (2, n)."""
         self._apply_commands()
+        if self.loop_bars and self.history:  # replay the last N bars; the set waits
+            bars = list(self.history)[-self.loop_bars:]
+            audio, st = bars[self.loop_pos % len(bars)]
+            self.loop_pos += 1
+            self.last_status = dict(st, loop=self.loop_bars)
+            return audio.copy()
         glide = 0.5 if self.user_bpm else 0.12  # user changes land fast, DJ drifts slowly
         self.bpm += (self.target_bpm - self.bpm) * glide
         if abs(self.target_bpm - self.bpm) < 0.05:
             self.bpm = self.target_bpm
         step = 60 / self.bpm / 4 * SR
         bar_len = int(round(16 * step))
-        ctx = BarCtx(step, bar_len, self.dry, self.duck, self.rumble, self.sample_pos)
+        ctx = BarCtx(step, bar_len, self.dry, self.duck, self.rumble, self.sample_pos, self.mix)
         cur = self.cur
 
         if self.nxt is None and cur.section.kind == "outro" and cur.bar_in_sec == 0:
@@ -136,7 +180,7 @@ class Engine:
             status = dict(cur.last_status, track_no=self.track_no, bpm=self.bpm)
         status.update(style_key=status.get("style_key", self.cur.style.key), target_bpm=self.target_bpm,
                       bpm_locked=self.user_bpm is not None, locked_style=self.locked_style,
-                      bar_len=bar_len, kicks=[k / bar_len for k in sorted(set(kicks))])
+                      bar_len=bar_len, kicks=[k / bar_len for k in sorted(set(kicks))], loop=0)
         self.last_status = status
 
         # side-chain envelope
@@ -167,4 +211,5 @@ class Engine:
         self.rumble[:-bar_len] = self.rumble[bar_len:]
         self.rumble[-bar_len:] = 0
         self.sample_pos += bar_len
+        self.history.append((out.copy(), self.last_status))
         return out

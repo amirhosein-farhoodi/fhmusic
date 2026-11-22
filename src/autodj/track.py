@@ -60,6 +60,7 @@ class BarCtx:
     duck: np.ndarray     # (2, N) side-chained to the kick
     rumble: np.ndarray   # (N,) rumble bus
     sample_pos: int      # absolute position (for phase-continuous drones)
+    mix: dict = field(default_factory=dict)  # DJ channel faders: kick/drums/bass/synths/atmos -> gain
 
 
 @dataclass
@@ -284,6 +285,7 @@ class Track:
         step, bar_len = ctx.step, ctx.bar_len
         gs0 = self.bar * 16
         out = BarOut()
+        K, D, B, S, A = (ctx.mix.get(c, 1.0) for c in ("kick", "drums", "bass", "synths", "atmos"))
 
         if b % 8 == 0:
             self._choose_layers(b == 0)
@@ -362,11 +364,11 @@ class Track:
                 elif v <= 0 or not drums_on(st) or (cut_end and st >= 12):
                     continue
                 at = pos(st)
-                place(ctx.dry, self.kick, at, 0.85 * v * gain_low)
+                place(ctx.dry, self.kick, at, 0.85 * v * gain_low * K)
                 if "rumble" in L:
                     n = min(len(self.kick), len(rsend) - at)
-                    rsend[at:at + n] += self.kick[:n] * v * s.rumble * gain_low
-                if v >= 0.9:
+                    rsend[at:at + n] += self.kick[:n] * v * s.rumble * gain_low * K
+                if v >= 0.9 and K > 0.05:  # a muted kick stops the pump too
                     out.kick_at.append(at)
 
         # ---------------- drums
@@ -376,24 +378,24 @@ class Track:
                 for st in range(16):
                     v, p = self.hat_lane.at(gs0 + st)
                     if v > 0 and drums_on(st) and (v >= 0.95 or rng.random() < p * (0.5 + 0.5 * e)):
-                        place(ctx.dry, x, pos(st, True), 0.17 * v * gain_rest * rng.uniform(0.85, 1.15), 0.15, 0.05)
+                        place(ctx.dry, x, pos(st, True), 0.17 * v * gain_rest * D * rng.uniform(0.85, 1.15), 0.15, 0.05)
             if "hat_o" in L:
                 x = self.hat_o.pick(1 - M["hat"])
                 for st in range(16):
                     v, p = self.hat_o_lane.at(gs0 + st)
                     if v > 0 and drums_on(st) and rng.random() < p:
-                        place(ctx.dry, x, pos(st, True), 0.2 * v * gain_rest, -0.1, 0.1)
+                        place(ctx.dry, x, pos(st, True), 0.2 * v * gain_rest * D, -0.1, 0.1)
             if "snare" in L:
                 x = self.snare.pick(M["snare"])
                 for st in range(16):
                     v, _ = self.snare_lane.at(gs0 + st)
                     if v > 0 and drums_on(st) and not (cut_end and st >= 12):
-                        place(ctx.dry, x, pos(st), 0.4 * v * gain_rest, 0.0, 0.25)
+                        place(ctx.dry, x, pos(st), 0.4 * v * gain_rest * D, 0.0, 0.25)
             if event == "fill" or (predrop and sec.kind == "tension"):
                 x = self.snare.pick(0.2)
                 start = 8 if predrop else 12
                 for i, st in enumerate(range(start, 16)):
-                    place(ctx.dry, x, pos(st), (0.18 + 0.3 * i / (16 - start)) * gain_rest, 0.0, 0.3)
+                    place(ctx.dry, x, pos(st), (0.18 + 0.3 * i / (16 - start)) * gain_rest * D, 0.0, 0.3)
             for i in range(3):
                 if f"perc{i + 1}" not in L:
                     continue
@@ -402,14 +404,14 @@ class Track:
                 for st in range(16):
                     v, p = self.perc_lanes[i].at(gs0 + st)
                     if v > 0 and drums_on(st) and rng.random() < p * (0.6 + 0.4 * e):
-                        place(ctx.dry, x, pos(st, True), 0.24 * v * gain_rest, pan, 0.2 + 0.2 * s.space,
+                        place(ctx.dry, x, pos(st, True), 0.24 * v * gain_rest * D, pan, 0.2 + 0.2 * s.space,
                               0.0)  # no echo: echoed metal = ringing bell
             if "noise" in L:
                 x = self.noise.pick(M["noise"])
                 for st in range(16):
                     v, p = self.noise_lane.at(gs0 + st)
                     if v > 0 and drums_on(st) and rng.random() < p:
-                        place(ctx.dry, x, pos(st), (0.1 + 0.15 * s.noise) * v * gain_rest,
+                        place(ctx.dry, x, pos(st), (0.1 + 0.15 * s.noise) * v * gain_rest * D,
                               float(rng.uniform(-0.5, 0.5)), 0.2)
 
         # ---------------- bass
@@ -425,7 +427,7 @@ class Track:
                 freq = midi_hz(self.root_midi + 12 + P.deg_semi(deg, self.scale))
                 x = self._cached(("bass", deg, gate, cq, round(step)),
                                  lambda: synth.bass_note(freq, gate * step / SR, cq, self.bass_drive, self.bass_wave))
-                place(ctx.duck, x, pos(st), 0.4 * v * gain_low)
+                place(ctx.duck, x, pos(st), 0.4 * v * gain_low * B)
 
         # ---------------- harmony & melody
         croot = self.progression[(self.bar // self.chord_bars) % len(self.progression)]
@@ -434,7 +436,7 @@ class Track:
             if "pad" in L and self.bar % self.chord_bars == 0:
                 dur = self.chord_bars * 16 * step / SR + 0.6
                 x = synth.pad([midi_hz(m) for m in self._chord_midis(croot, 24)], dur, M["pad"], rng)
-                place(ctx.duck, x, 0, 0.14 * bg * gain_rest, rev=0.35)
+                place(ctx.duck, x, 0, 0.14 * bg * gain_rest * S, rev=0.35)
             if "stab" in L:
                 mq = round(M["stab"], 1)
                 x = self._cached(("stab", croot, mq), lambda: synth.stab(
@@ -442,7 +444,7 @@ class Track:
                 for st in range(16):
                     v, _ = self.stab_lane.at(gs0 + st)
                     if v > 0:
-                        place(ctx.duck, x, pos(st), 0.17 * v * bg * gain_rest, float(rng.uniform(-0.4, 0.4)),
+                        place(ctx.duck, x, pos(st), 0.17 * v * bg * gain_rest * S, float(rng.uniform(-0.4, 0.4)),
                               0.45, 0.35)
             if "lead" in L:
                 cut = 300 + 3500 * (0.3 + 0.7 * e) * (0.3 + 0.7 * M["lead"])
@@ -456,7 +458,7 @@ class Track:
                     freq = midi_hz(self.root_midi + self.lead_oct + P.deg_semi(deg, self.scale))
                     x = self._cached(("lead", deg, ln, cq, round(step)), lambda: synth.lead_note(
                         freq, ln * step / SR, cq, self.lead_reso, drv, self.lead_wave))
-                    place(ctx.duck, x, pos(st, True), 0.13 * v * bg * gain_rest, 0.1, 0.3, 0.35)
+                    place(ctx.duck, x, pos(st, True), 0.13 * v * bg * gain_rest * S, 0.1, 0.3, 0.35)
             if "arp" in L:
                 tones = P.chord_degrees(croot, self.chord_kind)
                 cq = 2 ** (round(np.log2(500 + 2500 * M["lead"]) * 3) / 3)
@@ -470,7 +472,7 @@ class Track:
                     freq = midi_hz(self.root_midi + 36 + P.deg_semi(deg, self.scale))
                     x = self._cached(("arp", deg, cq, round(step)), lambda: synth.lead_note(
                         freq, self.arp.gate * self.arp.rate * step / SR, cq, 0.6, 2.0, "saw"))
-                    place(ctx.duck, x, pos(st, True), 0.1 * (1 if idx == 0 else 0.8) * bg * gain_rest,
+                    place(ctx.duck, x, pos(st, True), 0.1 * (1 if idx == 0 else 0.8) * bg * gain_rest * S,
                           0.4 * np.sin(g * 0.7), 0.25, 0.3)
             if "voice" in L:
                 for st in range(16):
@@ -484,7 +486,7 @@ class Track:
                     length = max(ln, 2) * 2 * step / SR
                     x = self._cached(("voice", deg, ln, vowel, round(step)),
                                      lambda: synth.voice(freq, length, vowel, rng))
-                    place(ctx.duck, x, pos(st), 0.2 * v * bg * gain_rest, float(rng.uniform(-0.3, 0.3)), 0.5, 0.4)
+                    place(ctx.duck, x, pos(st), 0.2 * v * bg * gain_rest * S, float(rng.uniform(-0.3, 0.3)), 0.5, 0.4)
 
         # ---------------- continuous background (cross-faded bar segments)
         for name, lvl in (("atmos", 0.1), ("texture", 0.12)):
@@ -499,18 +501,18 @@ class Track:
                 win = np.ones(n)
                 win[:fade] = np.linspace(0, 1, fade)
                 win[-fade:] = np.linspace(1, 0, fade)
-                ctx.duck[:, :n] += seg * np.linspace(cur, target, n) * win
+                ctx.duck[:, :n] += seg * np.linspace(cur, target, n) * win * A
             self.levels[name] = target
 
         # ---------------- transitions fx
         if events and sec.kind in ("breakdown", "tension", "break", "stripped") and nxt in ("peak", "groove", "tension"):
             rb = 2 if sec.bars >= 4 else 1
             if b == sec.bars - rb:
-                place(ctx.dry, synth.riser(rng, rb * bar_len / SR), 0, 0.3 * gain_rest)
+                place(ctx.dry, synth.riser(rng, rb * bar_len / SR), 0, 0.3 * gain_rest * A)
         if drop:
-            place(ctx.dry, self.impact, 0, 0.55, rev=0.5)
+            place(ctx.dry, self.impact, 0, 0.55 * A, rev=0.5)
         if events and b == 0 and sec.kind in ("break", "breakdown"):
-            place(ctx.dry, synth.riser(rng, bar_len / SR)[::-1].copy(), 0, 0.2)  # down-lifter
+            place(ctx.dry, synth.riser(rng, bar_len / SR)[::-1].copy(), 0, 0.2 * A)  # down-lifter
 
         # ---------------- reverb + rumble (overlap-add convolution)
         if send.any():
