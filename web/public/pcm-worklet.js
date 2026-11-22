@@ -12,6 +12,10 @@ class PcmPlayer extends AudioWorkletProcessor {
     this.rd = 0; // total frames played
     this.marks = []; // bar starts: {id, at}
     this.tick = 0;
+    this.starved = false; // ran dry: wait for a cushion before playing again
+    this.underrun = false; // sticky until reported
+    this.resumeAt = Math.round(sampleRate * 0.4);
+    this.fade = 0; // fade-in frames left after recovering
     this.port.onmessage = (e) => {
       const m = e.data;
       if (m.type !== "chunk") return;
@@ -31,15 +35,26 @@ class PcmPlayer extends AudioWorkletProcessor {
     const L = outputs[0][0];
     const R = outputs[0][1] || L;
     const n = L.length;
-    const k = Math.min(n, this.w - this.rd);
+    const avail = this.w - this.rd;
+    if (this.starved && avail >= this.resumeAt) {
+      this.starved = false;
+      this.fade = 256;
+    }
+    const k = this.starved ? 0 : Math.min(n, avail);
     for (let i = 0; i < k; i++) {
       const j = (this.rd + i) % this.cap;
-      L[i] = this.l[j];
-      R[i] = this.r[j];
+      let g = 1;
+      if (this.fade > 0) g = 1 - this.fade-- / 256;
+      L[i] = this.l[j] * g;
+      R[i] = this.r[j] * g;
     }
     for (let i = k; i < n; i++) {
       L[i] = 0;
       R[i] = 0;
+    }
+    if (k < n && this.w > 0 && !this.starved) {
+      this.starved = true;
+      this.underrun = true;
     }
     while (this.marks.length && this.marks[0].at < this.rd + k) {
       const mk = this.marks.shift();
@@ -47,7 +62,8 @@ class PcmPlayer extends AudioWorkletProcessor {
     }
     this.rd += k;
     if (++this.tick % 12 === 0) {
-      this.port.postMessage({ type: "level", buffered: this.w - this.rd, underrun: k < n && this.w > 0 });
+      this.port.postMessage({ type: "level", buffered: this.w - this.rd, underrun: this.underrun });
+      this.underrun = false;
     }
     return true;
   }

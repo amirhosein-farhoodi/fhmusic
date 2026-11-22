@@ -526,4 +526,7 @@ class Track:
 
         self.last_status = self.status()
         self._advance()
+        # `place` calls itself (echoes), so it references itself through its closure cell. Clearing
+        # the name breaks that cycle; otherwise this bar's send buffers (~10 MB) wait for the GC.
+        place = None  # noqa: F841
         return out

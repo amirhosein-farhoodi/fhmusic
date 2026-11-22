@@ -22,6 +22,8 @@ within a bar or two and the music never stops.
 
 import argparse
 import asyncio
+import ctypes
+import gc
 import json
 import os
 import struct
@@ -39,6 +41,25 @@ from .synth import SR
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 app = FastAPI(title="fhmusic")
+
+# Rendering churns through lots of short-lived numpy buffers, and glibc keeps freed
+# memory in its arenas instead of returning it to the OS. Together with engines left
+# in reference cycles, this let the container sit at ~1 GB on Railway after listeners
+# had left. malloc_trim hands the memory back. No-op off glibc (e.g. macOS in local dev).
+TRIM_EVERY_BARS = 32
+try:
+    _malloc_trim = ctypes.CDLL("libc.so.6").malloc_trim
+except (OSError, AttributeError):
+    _malloc_trim = None
+
+
+def trim_memory(collect: bool = False) -> None:
+    if collect:
+        # an Engine sits in reference cycles, so dropping the last reference doesn't free it;
+        # numpy work makes few Python objects, so a full GC pass would otherwise rarely run.
+        gc.collect()
+    if _malloc_trim is not None:
+        _malloc_trim(0)
 
 
 def pack_bar(meta: dict, audio: np.ndarray) -> bytes:
@@ -68,6 +89,8 @@ async def stream(ws: WebSocket):
             if kind == "pull":
                 audio = await loop.run_in_executor(None, engine.render_bar)
                 bar_id += 1
+                if bar_id % TRIM_EVERY_BARS == 0:
+                    await loop.run_in_executor(None, trim_memory)
                 await ws.send_bytes(pack_bar(dict(engine.last_status, id=bar_id), audio))
                 continue
             if kind == "bpm":
@@ -95,6 +118,9 @@ async def stream(ws: WebSocket):
             await ws.send_json(state(engine))
     except WebSocketDisconnect:
         pass
+    finally:
+        del engine  # free this listener's buses and caches, then hand the memory back
+        await loop.run_in_executor(None, trim_memory, True)
 
 
 if WEB_DIST.exists():

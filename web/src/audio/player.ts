@@ -2,8 +2,13 @@ import { MasterFx } from "./fx";
 import type { BarMeta, Hello, ServerState } from "./types";
 
 const SAMPLE_RATE = 48000;
-const TARGET_BUFFER_S = 1.0; // pull a new bar when less than this is queued
-const APPROX_BAR_S = 1.8;
+// How much audio to keep queued ahead of playback. Network hiccups, slow frames
+// on the main thread and GC pauses longer than this are heard as a gap, so the
+// target starts with some headroom and grows each time the buffer runs dry.
+// Trade-off: server-side controls (BPM, style, pads) are heard about this much later.
+const MIN_BUFFER_S = 2.5;
+const MAX_BUFFER_S = 6;
+const MAX_INFLIGHT = 3;
 
 export type Channel = "kick" | "drums" | "bass" | "synths" | "atmos";
 
@@ -39,6 +44,8 @@ class Player {
   private metas = new Map<number, BarMeta>();
   private inflight = 0;
   private buffered = 0;
+  private targetBuffer = MIN_BUFFER_S;
+  private barSeconds = 1.8; // updated from each bar that arrives
   private playing = false;
   private events: PlayerEvents | null = null;
   private retry: number | undefined;
@@ -132,13 +139,18 @@ class Player {
     }
     this.metas.set(meta.id, meta);
     this.buffered += frames;
+    this.barSeconds = frames / SAMPLE_RATE;
     this.node?.port.postMessage({ type: "chunk", id: meta.id, l, r }, [l.buffer, r.buffer]);
     this.pump();
   }
 
-  private onWorklet(msg: { type: string; id?: number; frame?: number; buffered?: number }) {
+  private onWorklet(msg: { type: string; id?: number; frame?: number; buffered?: number; underrun?: boolean }) {
     if (msg.type === "level") {
       this.buffered = msg.buffered ?? 0;
+      if (msg.underrun && this.playing) {
+        this.targetBuffer = Math.min(MAX_BUFFER_S, this.targetBuffer + 1);
+        console.warn(`audio underrun: buffer target now ${this.targetBuffer}s`);
+      }
       this.pump();
     } else if (msg.type === "started" && msg.id !== undefined) {
       const meta = this.metas.get(msg.id);
@@ -154,8 +166,8 @@ class Player {
 
   private pump() {
     if (!this.playing || this.ws?.readyState !== WebSocket.OPEN) return;
-    const queued = this.buffered / SAMPLE_RATE + this.inflight * APPROX_BAR_S;
-    if (queued < TARGET_BUFFER_S && this.inflight < 2) {
+    // fill up to the target in one go (several pulls in flight) rather than one bar per round trip
+    while (this.inflight < MAX_INFLIGHT && this.buffered / SAMPLE_RATE + this.inflight * this.barSeconds < this.targetBuffer) {
       this.inflight++;
       this.ws.send(JSON.stringify({ type: "pull" }));
     }
