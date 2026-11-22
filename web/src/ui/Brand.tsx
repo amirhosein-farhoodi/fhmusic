@@ -33,7 +33,7 @@ export function LivePill() {
       : ["Live", "bg-bubblegum"];
 
   return (
-    <div className="card flex items-center gap-2.5 !rounded-full px-4 py-2.5 text-sm font-semibold">
+    <div className="card flex items-center gap-2.5 whitespace-nowrap !rounded-full px-4 py-2.5 text-sm font-semibold">
       <span className="relative flex size-2.5">
         {status === "playing" && connected && (
           <span className={`absolute inline-flex size-full animate-ping rounded-full opacity-75 ${dot}`} />
@@ -41,7 +41,7 @@ export function LivePill() {
         <span className={`relative inline-flex size-2.5 rounded-full ${dot}`} />
       </span>
       <span className="uppercase tracking-[0.2em]">{label}</span>
-      {trackNo && <span className="hidden text-lavender/70 sm:inline">· set track {trackNo}</span>}
+      {trackNo && <span className="hidden text-lavender/70 2xl:inline">· set track {trackNo}</span>}
     </div>
   );
 }

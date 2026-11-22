@@ -32,37 +32,70 @@ float snoise(vec3 v){
 const vertexShader = /* glsl */ `
 uniform float uTime, uBass, uKick, uEnergy, uHigh;
 varying float vDisp;
-varying vec3 vNormal;
-varying vec3 vView;
+varying vec3 vPos;
 ${NOISE}
 void main(){
-  float slow = snoise(normal * 1.3 + vec3(0.0, uTime * 0.35, uTime * 0.2));
-  float fine = snoise(normal * 4.2 + uTime * 0.9);
-  float d = slow * (0.16 + 0.42 * uBass + 0.2 * uEnergy) + fine * 0.05 * (1.0 + 2.5 * uHigh);
+  // big, slow, smooth lobes (bass) + a little surface shimmer (hats)
+  float slow = snoise(normal * 1.1 + vec3(0.0, uTime * 0.3, uTime * 0.18));
+  float fine = snoise(normal * 3.2 + uTime * 0.8);
+  float d = slow * (0.14 + 0.38 * uBass + 0.16 * uEnergy) + fine * 0.025 * (1.0 + 2.0 * uHigh);
   vDisp = d;
-  vec3 p = position + normal * d;
-  p *= 1.0 + 0.09 * uKick;
+  vec3 p = (position + normal * d) * (1.0 + 0.08 * uKick);
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  vNormal = normalize(normalMatrix * normal);
-  vView = normalize(-mv.xyz);
+  vPos = mv.xyz;
   gl_Position = projectionMatrix * mv;
 }`;
 
+// Glossy 'soda candy' shading: real lighting from the displaced surface,
+// a sharp specular highlight, a pink rim and swirl bands that follow the
+// shape, so the blob reads as a solid 3D object instead of a purple cloud.
 const fragmentShader = /* glsl */ `
 uniform vec3 uGrape, uLavender, uPink, uButter, uPlum;
-uniform float uKick, uEnergy;
+uniform float uKick, uEnergy, uTime;
 varying float vDisp;
-varying vec3 vNormal;
-varying vec3 vView;
+varying vec3 vPos;
 void main(){
-  float fres = pow(1.0 - max(dot(normalize(vNormal), vView), 0.0), 2.4);
-  vec3 col = mix(uPlum, uGrape, smoothstep(-0.35, 0.05, vDisp));
-  col = mix(col, uLavender, smoothstep(0.0, 0.3, vDisp));
-  col = mix(col, uPink, fres * 0.85);
-  col += uButter * smoothstep(0.28, 0.55, vDisp) * (0.35 + 0.9 * uKick);
-  col *= 0.85 + 0.5 * uEnergy + 0.35 * uKick;
+  vec3 n = normalize(cross(dFdx(vPos), dFdy(vPos)));   // true normal of the wobbling surface
+  vec3 v = normalize(-vPos);
+  vec3 key = normalize(vec3(-0.55, 0.75, 0.55));
+  vec3 fill = normalize(vec3(0.7, -0.3, 0.4));
+
+  float diff = max(dot(n, key), 0.0);
+  float back = max(dot(n, fill), 0.0);
+  float spec = pow(max(dot(reflect(-key, n), v), 0.0), 48.0);
+  float fres = pow(1.0 - max(dot(n, v), 0.0), 2.6);
+
+  // body: deep grape in the valleys, lavender on the lobes
+  vec3 body = mix(uGrape * 0.75, uLavender, smoothstep(-0.25, 0.3, vDisp));
+  // candy swirl bands drifting over the surface
+  float band = smoothstep(0.55, 0.75, sin(vDisp * 22.0 - uTime * 1.6) * 0.5 + 0.5);
+  body = mix(body, uPink, band * 0.35);
+
+  vec3 col = uPlum * 0.6 + body * (0.35 + 0.85 * diff) + uPink * back * 0.25;
+  col += uPink * fres * 0.9;                                  // rim light
+  col += mix(vec3(1.0), uButter, 0.4) * spec * (0.9 + 1.2 * uKick); // glossy highlight
+  col += uButter * smoothstep(0.3, 0.55, vDisp) * 0.5 * uKick;      // lobes flash on the kick
+  col *= 0.9 + 0.3 * uEnergy;
   gl_FragColor = vec4(col, 1.0);
 }`;
+
+/** Thin wire cage around the blob: slow industrial structure, pulses on the kick. */
+function Cage() {
+  const ref = useRef<THREE.LineSegments>(null);
+  const geo = useMemo(() => new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(2.05, 1)), []);
+  useFrame((_, dt) => {
+    const m = ref.current!;
+    m.rotation.y += dt * (0.06 + (features.bpm / 140) * 0.06 * (features.playing ? 1 : 0.3));
+    m.rotation.x += dt * 0.025;
+    m.scale.setScalar(1 + features.kick * 0.05);
+    (m.material as THREE.LineBasicMaterial).opacity = 0.16 + features.kick * 0.25 + features.energy * 0.08;
+  });
+  return (
+    <lineSegments ref={ref} geometry={geo}>
+      <lineBasicMaterial color={PALETTE.lavender} transparent opacity={0.2} toneMapped={false} />
+    </lineSegments>
+  );
+}
 
 export function SodaBlob() {
   const mat = useRef<THREE.ShaderMaterial>(null);
@@ -92,9 +125,12 @@ export function SodaBlob() {
   });
 
   return (
-    <mesh>
-      <icosahedronGeometry args={[1.35, 64]} />
-      <shaderMaterial ref={mat} uniforms={uniforms} vertexShader={vertexShader} fragmentShader={fragmentShader} />
-    </mesh>
+    <group>
+      <mesh>
+        <icosahedronGeometry args={[1.35, 96]} />
+        <shaderMaterial ref={mat} uniforms={uniforms} vertexShader={vertexShader} fragmentShader={fragmentShader} />
+      </mesh>
+      <Cage />
+    </group>
   );
 }

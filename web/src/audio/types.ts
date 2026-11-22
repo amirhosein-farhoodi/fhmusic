@@ -17,6 +17,7 @@ export interface BarMeta {
   locked_style: string | null;
   bar_len: number;
   kicks: number[]; // kick positions as fractions of the bar
+  loop: number; // bars being looped (0 = off)
   next?: string;
 }
 

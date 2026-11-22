@@ -1,10 +1,16 @@
+import { MasterFx } from "./fx";
 import type { BarMeta, Hello, ServerState } from "./types";
 
 const SAMPLE_RATE = 48000;
 const TARGET_BUFFER_S = 1.0; // pull a new bar when less than this is queued
 const APPROX_BAR_S = 1.8;
 
+export type Channel = "kick" | "drums" | "bass" | "synths" | "atmos";
+
 type Command =
+  | { type: "mix"; channels: Partial<Record<Channel, number>> }
+  | { type: "perform"; action: "build" | "drop" | "breakdown" }
+  | { type: "loop"; bars: number }
   | { type: "bpm"; value: number }
   | { type: "bpm_auto" }
   | { type: "next" }
@@ -25,6 +31,7 @@ export interface PlayerEvents {
 class Player {
   ctx: AudioContext | null = null;
   analyser: AnalyserNode | null = null;
+  fx: MasterFx | null = null;
   current: BarMeta | null = null;
   private startTime = 0;
   private node: AudioWorkletNode | null = null;
@@ -45,10 +52,13 @@ class Player {
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0.55;
-      node.connect(analyser);
+      const fx = new MasterFx(ctx);
+      // the analyser sits after the DJ effects, so the visuals react to them too
+      node.connect(fx.input);
+      fx.output.connect(analyser);
       analyser.connect(ctx.destination);
       node.port.onmessage = (e) => this.onWorklet(e.data);
-      Object.assign(this, { ctx, node, analyser });
+      Object.assign(this, { ctx, node, analyser, fx });
     }
     this.playing = true;
     await this.ctx!.resume();
@@ -134,6 +144,7 @@ class Player {
       if (meta) {
         this.current = meta;
         this.startTime = (msg.frame ?? 0) / SAMPLE_RATE;
+        this.fx?.setBpm(meta.bpm);
         this.events?.onBar(meta);
       }
     }

@@ -41,6 +41,42 @@ cd web && npm run dev   # terminal 2: open the URL Vite prints (proxies /ws to :
 | Tempo ±1 (hold for fast) | − / + | `↑` / `↓` (`Shift` = ±5) |
 | Give tempo back to the DJ | Manual · reset | `A` |
 | Lock a style | chips at the top | |
+| Open DJ Mode | DJ Mode | `D` (`Esc` closes) |
+
+## DJ Mode (for DJs)
+
+| Section | What it does | Timing |
+|---|---|---|
+| **Performance pads** | **Build up** (riser and snare roll into a drop), **Drop** (straight to the peak), **Breakdown** (drums out, music in, then it builds back) | next bar |
+| **Loop** | Repeat the last 1, 2 or 4 bars; turn it off and the set carries on | next bar |
+| **Filter** | One-knob DJ filter: left = low-pass (darker), right = high-pass (thinner) | instant |
+| **EQ** | High / mid / low with kill switches | instant |
+| **FX** | Beat-synced echo (1/16 to 1/4) and reverb | instant |
+| **Channels** | Kick, drums, bass, synths and atmos faders with mutes | next bar |
+
+### DJ Mode keyboard (while the panel is open)
+
+The keyboard rows follow the controls, so you can play it without the mouse:
+
+| Keys | Control |
+|---|---|
+| `Z` `X` `C` | Pads: Build up / Drop / Breakdown |
+| `1` `2` `4` | Loop 1 / 2 / 4 bars (press again to release) |
+| `Q` `W` `E` | Filter darker / thinner / center (hold to sweep) |
+| `R` `T` `Y` | EQ high: down / up / kill |
+| `F` `G` `H` | EQ mid: down / up / kill |
+| `V` `B` `N` | EQ low: down / up / kill |
+| `U` `I` `O` | Echo less / more / cycle echo time |
+| `J` `K` | Reverb less / more |
+| `5` `6` `7` `8` `9` | Mute kick / drums / bass / synths / atmos |
+| `0` | Reset everything |
+
+Every control also shows its keys as small keycaps in the panel. Shortcuts are
+ignored while Cmd/Ctrl is held, so browser shortcuts keep working.
+
+Double-click any fader to reset it. **Reset** puts everything back. The filter,
+EQ and FX run in the browser, so they react instantly. Pads, loops and channels
+change the music itself in the engine, so you hear them on the next bar.
 
 ## Terminal-only player (no browser)
 

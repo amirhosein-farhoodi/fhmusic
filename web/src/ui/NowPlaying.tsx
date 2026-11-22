@@ -36,7 +36,14 @@ export function NowPlaying() {
       <div className="mt-3 flex items-end justify-between sm:mt-5">
         <div>
           <div className="eyebrow">Section</div>
-          <div className="mt-1.5 font-display text-lg font-bold">{SECTION_LABEL[meta.section] ?? meta.section}</div>
+          <div className="mt-1.5 flex items-center gap-2 font-display text-lg font-bold">
+            {SECTION_LABEL[meta.section] ?? meta.section}
+            {meta.loop > 0 && (
+              <span className="animate-pulse rounded-lg bg-butter px-2 py-0.5 font-sans text-[11px] font-bold uppercase tracking-wider text-plum">
+                Looping {meta.loop} bar{meta.loop > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
         </div>
         <div className="text-right">
           <div className="eyebrow">Energy</div>

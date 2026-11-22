@@ -32,7 +32,7 @@ function HoldButton({ onStep, label, children }: { onStep: () => void; label: st
 }
 
 /** Four dots flashing on the beat -- driven straight from the audio clock. */
-function BeatDots() {
+export function BeatDots() {
   const refs = useRef<(HTMLSpanElement | null)[]>([]);
   useEffect(() => {
     let raf = 0;

@@ -50,6 +50,7 @@ export function StartScreen() {
           <span><Kbd>Space</Kbd> play / pause</span>
           <span><Kbd>→</Kbd> next track</span>
           <span><Kbd>↑</Kbd><Kbd>↓</Kbd> tempo</span>
+          <span><Kbd>D</Kbd> DJ mode</span>
         </div>
       </div>
     </div>
