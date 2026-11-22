@@ -1,16 +1,17 @@
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from "@react-three/postprocessing";
 import type { BloomEffect, ChromaticAberrationEffect } from "postprocessing";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import * as THREE from "three";
 import { useDJ } from "../store";
 import { DJ_PANEL_FRACTION, DJ_PANEL_MAX_PX } from "../ui/DJPanel";
 import { AudioDriver } from "./AudioDriver";
 import { Backdrop } from "./Backdrop";
 import { features } from "./features";
-import { Lasers } from "./Lasers";
 import { KickRipples, Orbits } from "./Orbits";
 import { Particles } from "./Particles";
+import { Ribbons } from "./Ribbons";
 import { SodaBlob } from "./SodaBlob";
 import { StepRing } from "./StepRing";
 import { Stickers } from "./Stickers";
@@ -106,6 +107,38 @@ function CameraRig() {
   return null;
 }
 
+/**
+ * A soft studio environment for reflections on the glossy candy stickers,
+ * plus a warm key and pink/lavender rim lights in the soda palette.
+ * (The blob and the light effects use their own shaders and ignore these.)
+ */
+function Lighting() {
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = env;
+    scene.environmentIntensity = 0.55;
+    return () => {
+      scene.environment = null;
+      env.dispose();
+      pmrem.dispose();
+    };
+  }, [gl, scene]);
+  const rim = useRef<THREE.PointLight>(null);
+  useFrame(() => {
+    if (rim.current) rim.current.intensity = 18 + features.kick * 30 + features.drop * 60;
+  });
+  return (
+    <>
+      <ambientLight intensity={0.25} color="#C77DFF" />
+      <directionalLight position={[-4, 6, 5]} intensity={1.6} color="#FFF1D6" />
+      <pointLight ref={rim} position={[0, 0, -1]} distance={14} decay={1.6} color="#FFB3C6" />
+      <pointLight position={[6, -3, 3]} intensity={10} distance={14} decay={1.6} color="#C77DFF" />
+    </>
+  );
+}
+
 function Effects() {
   const bloom = useRef<BloomEffect>(null);
   const chroma = useRef<ChromaticAberrationEffect>(null);
@@ -143,7 +176,8 @@ export function Scene() {
       <CameraRig />
       <fog attach="fog" args={["#1d1220", 9, 22]} />
       <Backdrop />
-      <Lasers />
+      <Lighting />
+      <Ribbons />
       <SodaBlob />
       <StepRing />
       <Orbits />
