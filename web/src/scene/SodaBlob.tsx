@@ -61,24 +61,30 @@ void main(){
   float spikes = max(0.0, snoise(normal * 6.5 + uTime * 1.7));
   spikes *= spikes;
   float calm = 1.0 - 0.55 * uCalm; // breakdowns: smooth and floating
-  float d = slow * (0.14 + 0.38 * uBass + 0.16 * uEnergy + 0.35 * uDrop) * calm
-          + fine * (0.025 * (1.0 + 2.0 * uHigh) + 0.06 * uBuild)
-          + spikes * (0.28 * uSnare + 0.55 * uDrop) * calm;
+  // amplitudes kept close to the calm, glossy look: it should breathe with the music, not churn
+  float d = slow * (0.13 + 0.1 * uBass + 0.05 * uEnergy + 0.12 * uDrop) * calm
+          + fine * (0.012 * (1.0 + uHigh) + 0.025 * uBuild)
+          + spikes * (0.05 * uSnare + 0.12 * uDrop) * calm;
   // kick punch; the build-up compresses it, the drop releases it, breakdowns breathe on the beat
-  float scale = 1.0 + 0.08 * uKick * (1.0 - 0.7 * uCalm) - 0.12 * uBuild * uBuild + 0.2 * uDrop + 0.04 * uBeatPulse * uCalm;
+  float scale = 1.0 + 0.06 * uKick * (1.0 - 0.7 * uCalm) - 0.08 * uBuild * uBuild + 0.1 * uDrop + 0.04 * uBeatPulse * uCalm;
 
-  // starburst: concave cones around each spike direction, the tallest one wins
+  // spike field around 42 directions, each driven by its own slice of the music.
+  // The soda blob wears it as soft, rounded bumps that pulse with the track;
+  // the starburst (S) turns the same field into long sharp points.
   float spiky = clamp(uSpiky, 0.0, 1.2);
-  float tip = 0.0;
-  if (spiky > 0.001) {
-    float star = 0.0;
-    for (int i = 0; i < ${SPIKES}; i++) {
-      float ang = acos(clamp(dot(normal, uDirs[i]), -1.0, 1.0));
-      float s = clamp(1.0 - ang / ${SPIKE_WIDTH}, 0.0, 1.0);
-      float cone = mix(s * s, smoothstep(0.0, 1.0, s) * 0.55, uCalm); // breakdowns round the points off
-      float h = cone * uLen[i];
+  float star = 0.0, bumps = 0.0, tip = 0.0;
+  for (int i = 0; i < ${SPIKES}; i++) {
+    float ang = acos(clamp(dot(normal, uDirs[i]), -1.0, 1.0));
+    float s = clamp(1.0 - ang / ${SPIKE_WIDTH}, 0.0, 1.0);
+    float soft = smoothstep(0.0, 1.0, s);
+    bumps = max(bumps, soft * soft * uLen[i]);
+    if (spiky > 0.001) {
+      float h = mix(s * s, soft * 0.55, uCalm) * uLen[i]; // breakdowns round the points off
       if (h > star) { star = h; tip = s; }
     }
+  }
+  d += bumps * 0.07 * (1.0 - spiky); // the blob's share: soft pulses, never a mace
+  if (spiky > 0.001) {
     star += slow * 0.05 + fine * 0.02 * (1.0 + 2.0 * uHigh);
     d = mix(d, star, spiky);
     scale *= mix(1.0, 0.7, spiky); // smaller core, so the points carry the size
@@ -211,7 +217,7 @@ export function SodaBlob() {
       st.x += st.v * h;
     }
     u.uSpiky.value = st.x;
-    if (st.x > 0.001 || target) {
+    {
       // a snare fires a random third of the spikes
       if (f.snare > 0.6 && st.lastSnare <= 0.6) for (let i = 0; i < SPIKES; i++) if (Math.random() < 0.33) st.hits[i] = 1;
       st.lastSnare = f.snare;

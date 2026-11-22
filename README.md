@@ -57,7 +57,7 @@ development and `uv run fhmusic` use.
 | Lock a style | chips at the top | |
 | Open DJ Mode | DJ Mode | `D` (`Esc` closes) |
 | Visuals only (fullscreen, controls hide until the mouse moves) | Visuals, or double-click the stage | `Esc` exits |
-| Switch the centre piece (starburst / soda blob) | | `S` |
+| Switch the centre piece (soda blob / starburst) | | `S` |
 
 ## DJ Mode (for DJs)
 

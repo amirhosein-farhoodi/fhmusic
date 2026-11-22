@@ -10,9 +10,9 @@ export type Shape = "soda" | "star";
 const SHAPE_KEY = "fhmusic.shape";
 const savedShape = (): Shape => {
   try {
-    return localStorage.getItem(SHAPE_KEY) === "soda" ? "soda" : "star"; // starburst by default
+    return localStorage.getItem(SHAPE_KEY) === "star" ? "star" : "soda"; // the soda blob by default
   } catch {
-    return "star";
+    return "soda";
   }
 };
 export const CHANNELS: Channel[] = ["kick", "drums", "bass", "synths", "atmos"];
@@ -33,7 +33,7 @@ interface DJState {
   clean: boolean;
   setClean: (on: boolean) => void;
 
-  // ---- shape of the centre piece: the spiky starburst (default) or the original soda blob
+  // ---- shape of the centre piece: the soda blob (default) or the spiky starburst
   shape: Shape;
   toggleShape: () => void;
 
