@@ -89,8 +89,10 @@ class Player {
 
   private connect() {
     if (this.ws && this.ws.readyState <= WebSocket.OPEN) return;
+    // VITE_WS_URL points at a separately hosted backend (e.g. wss://xxx.up.railway.app/ws);
+    // without it, use the same host (local dev via the Vite proxy, or the backend serving the app).
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${location.host}/ws`);
+    const ws = new WebSocket(import.meta.env.VITE_WS_URL || `${proto}://${location.host}/ws`);
     ws.binaryType = "arraybuffer";
     ws.onopen = () => {
       this.inflight = 0;

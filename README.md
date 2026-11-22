@@ -32,6 +32,17 @@ uv run fhmusic          # terminal 1: backend on :8000
 cd web && npm run dev   # terminal 2: open the URL Vite prints (proxies /ws to :8000)
 ```
 
+## Deploy (Netlify + Railway)
+
+- **Backend → Railway.** Railway builds the [`Dockerfile`](Dockerfile) (engine + WebSocket
+  server only) and sets `PORT`. Generate a public domain under Settings → Networking.
+- **Frontend → Netlify.** [`netlify.toml`](netlify.toml) builds `web/` and publishes
+  `web/dist`. Set the environment variable `VITE_WS_URL` to the Railway address,
+  e.g. `wss://your-app.up.railway.app/ws`, then redeploy (it is baked in at build time).
+
+Without `VITE_WS_URL` the app connects to `/ws` on its own host, which is what local
+development and `uv run fhmusic` use.
+
 ## Controls
 
 | Action | Button | Key |

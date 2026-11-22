@@ -23,6 +23,7 @@ within a bar or two and the music never stops.
 import argparse
 import asyncio
 import json
+import os
 import struct
 from pathlib import Path
 
@@ -102,10 +103,10 @@ if WEB_DIST.exists():
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="fhmusic web app")
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))  # hosts like Railway set PORT
     args = ap.parse_args()
     if not WEB_DIST.exists():
-        print("⚠  web/dist not found -- build the frontend first:  cd web && npm install && npm run build")
+        print("web/dist not found: serving the /ws stream only (build web/ to also serve the app here)")
     print(f"fhmusic → http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")

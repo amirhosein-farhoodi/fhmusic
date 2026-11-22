@@ -1,0 +1,9 @@
+# Frontend only. Set VITE_WS_URL in Netlify (Site configuration → Environment variables)
+# to your Railway backend, e.g. wss://your-app.up.railway.app/ws
+[build]
+  base = "web"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
