@@ -173,7 +173,7 @@ function VisualsButton() {
     <button
       onClick={() => setClean(!clean)}
       title="Visuals only (double-click the stage)"
-      className={`press flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-bold ${
+      className={`press flex h-[42px] min-w-[42px] items-center justify-center gap-2 whitespace-nowrap rounded-full px-3 text-sm font-bold sm:px-4 ${
         clean ? "bg-butter text-plum shadow-[0_3px_0_0_#7B2CBF]" : "card !rounded-full text-white hover:text-butter"
       }`}
     >
@@ -189,12 +189,14 @@ function DJButton() {
   return (
     <button
       onClick={() => toggleDJ()}
-      className={`press flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-bold ${
+      title="DJ Mode (D)"
+      aria-label="DJ Mode"
+      className={`press flex h-[42px] min-w-[42px] items-center justify-center gap-2 whitespace-nowrap rounded-full px-3 text-sm font-bold sm:px-4 ${
         open ? "bg-butter text-plum shadow-[0_3px_0_0_#7B2CBF]" : "card !rounded-full text-white hover:text-butter"
       }`}
     >
       <SlidersHorizontal className="size-4" strokeWidth={2.5} />
-      <span>DJ Mode</span>
+      <span className="hidden sm:inline">DJ Mode</span>
     </button>
   );
 }
@@ -218,10 +220,10 @@ export default function App() {
     >
       <Scene />
 
-      <header className="ui-layer ui-top pointer-events-none absolute inset-x-0 top-0 grid grid-cols-[1fr_auto] items-start gap-4 p-4 sm:p-7 lg:grid-cols-[1fr_auto_1fr]">
-        <div className="pointer-events-auto">{started && <Logo />}</div>
+      <header className="ui-layer ui-top pointer-events-none absolute inset-x-0 top-0 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 p-4 sm:gap-4 sm:p-7 lg:grid-cols-[1fr_auto_1fr]">
+        <div className="pointer-events-auto min-w-0">{started && <Logo />}</div>
         <div className="pointer-events-auto hidden lg:block">{started && !djOpen && <StylePicker />}</div>
-        <div className="pointer-events-auto flex items-center gap-2 justify-self-end">
+        <div className="pointer-events-auto flex shrink-0 items-center gap-1.5 justify-self-end sm:gap-2">
           {started && <TipButton />}
           {started && <VisualsButton />}
           {started && <DJButton />}

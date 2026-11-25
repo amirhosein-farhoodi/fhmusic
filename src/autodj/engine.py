@@ -6,9 +6,13 @@ tails spill naturally into following bars:
   * duck   -- bass, music, reverb returns: side-chained to the kick (the pump)
   * rumble -- kick -> dark reverb -> distortion -> low-pass
 
-Transitions are DJ-style: the next track fades in under the outro, the low
-end (kick/bass/rumble) swaps at the halfway point, the outgoing track fades
+Transitions are DJ-style: the next track (in a compatible key: same root, a
+fourth or a fifth) fades in under the outro with its lows EQ'd out (thin kick,
+no bass), the low end swaps at the halfway point, the outgoing track fades
 out, and the tempo glides to the new BPM.
+
+The summed buses go through the master chain (master.py): mono low end, soft
+clipper, look-ahead limiter.
 """
 
 from collections import deque
@@ -17,6 +21,7 @@ import numpy as np
 from scipy import signal
 
 from . import synth
+from .master import Master
 from .style import pick_bpm, pick_style
 from .synth import SR
 from .track import SECTION_KINDS, BarCtx, Section, Track
@@ -32,6 +37,12 @@ PERFORM = {
     "breakdown": [("breakdown", 8), ("tension", 4), ("peak", 16)],
 }
 LOOP_CHOICES = (0, 1, 2, 4)
+SC_DEPTH = 0.6       # side-chain pump: how far the kick ducks bass/music (0.6 = about -8 dB)
+RUMBLE_LEVEL = 0.3
+MASTER_GAIN = 0.85  # drive into the master clipper/limiter; sets how loud the set is (about -8 LUFS)
+# Harmonic mixing: the next track's root is the same note, a fourth or a fifth away,
+# so the two tracks' drones and basses agree while they overlap.
+KEY_MOVES = ((0, 0.4), (5, 0.3), (7, 0.3))
 
 
 class Engine:
@@ -43,6 +54,7 @@ class Engine:
         self.bpm = float(bpm) if bpm else pick_bpm(self.rng, st, self.intensity)
         self.target_bpm = self.bpm
         self.cur = Track(self.rng, st)
+        self.master = Master(MASTER_GAIN)
         self.nxt: Track | None = None
         self.track_no = 1
         self.sample_pos = 0
@@ -73,7 +85,12 @@ class Engine:
         self.intensity = self._next_intensity()
         st = pick_style(self.rng, self.intensity, prev_key=self.cur.style.key, locked=self.locked_style)
         self.target_bpm = self.user_bpm or pick_bpm(self.rng, st, self.intensity, prev_bpm=self.bpm)
-        self.nxt = Track(self.rng, st)
+        self.nxt = self._new_track(st)
+
+    def _new_track(self, st) -> Track:
+        moves, w = zip(*KEY_MOVES)
+        pc = (self.cur.root_midi + int(self.rng.choice(moves, p=w))) % 12
+        return Track(self.rng, st, root_midi=28 + (pc - 28) % 12)  # E1 .. D#2
 
     # ------------------------------------------------------------------ live controls
 
@@ -95,7 +112,7 @@ class Engine:
                 self.locked_style = value
                 if value is not None:
                     if self.nxt is not None:  # already mixing: swap the incoming track
-                        self.nxt = Track(self.rng, pick_style(self.rng, self.intensity, locked=value))
+                        self.nxt = self._new_track(pick_style(self.rng, self.intensity, locked=value))
                     else:
                         self._skip()
             elif name == "next":
@@ -166,8 +183,9 @@ class Engine:
             swap = k >= half
             in_rest = min(1.0, (k + 1) / half)
             out_rest = 1.0 if k < half else max(0.0, 1 - (k - half + 1) / max(1, total - half))
-            o1 = cur.render_bar(ctx, 0.0 if swap else 1.0, out_rest, events=False)
-            o2 = self.nxt.render_bar(ctx, 1.0 if swap else 0.0, in_rest, events=False)
+            # DJ bass swap: the track without the low end still plays, just with its lows EQ'd out
+            o1 = cur.render_bar(ctx, out_rest, low_cut=swap, events=False)
+            o2 = self.nxt.render_bar(ctx, in_rest, low_cut=not swap, events=False)
             kicks, mutes = o1.kick_at + o2.kick_at, []
             status = dict(cur.last_status, track_no=self.track_no, bpm=self.bpm)
             status["next"] = f"{self.nxt.name} ({self.nxt.style.name})"
@@ -188,12 +206,11 @@ class Engine:
         tau, att = step * 1.2, 0.002 * SR
         for at in kicks:
             t = np.arange(bar_len - at)
-            g[at:] = np.minimum(g[at:], 1 - 0.85 * np.minimum(1, t / att) * np.exp(-t / tau))
+            g[at:] = np.minimum(g[at:], 1 - SC_DEPTH * np.minimum(1, t / att) * np.exp(-t / tau))
 
         r = synth.drive(self.rumble[:bar_len] * 0.5, self.cur.rumble_drive)
         r, self.rumble_zi = signal.sosfilt(self.rumble_sos, r, zi=self.rumble_zi)
-        out = self.dry[:, :bar_len] + self.duck[:, :bar_len] * g + (r * g * 0.35)[None, :]
-        out = np.tanh(out * 0.85) * 0.95  # master glue / soft limiter
+        out = self.dry[:, :bar_len] + self.duck[:, :bar_len] * g + (r * g * RUMBLE_LEVEL)[None, :]
 
         # silences (stops, the gap before a drop)
         if mutes:
@@ -204,6 +221,7 @@ class Engine:
                 gate[max(0, a - ramp):a] = np.minimum(gate[max(0, a - ramp):a],
                                                       np.linspace(1, 0, a - max(0, a - ramp)))
             out *= gate
+        out = self.master.process(out)
 
         for bus in (self.dry, self.duck):
             bus[:, :-bar_len] = bus[:, bar_len:]

@@ -85,18 +85,37 @@ class Bank:
 
 # --------------------------------------------------------------------------- drums
 
-def kick(rng, aggression: float) -> np.ndarray:
-    """Industrial kick: pitch-swept sine + click, driven according to `aggression`."""
-    kind = rng.choice(["punch", "boom", "hard"])
-    f_end, f_start = rng.uniform(42, 56), rng.uniform(160, 340)
-    pitch_decay = rng.uniform(0.02, 0.05)
-    decay = {"punch": rng.uniform(0.14, 0.24), "boom": rng.uniform(0.3, 0.45),
-             "hard": rng.uniform(0.18, 0.3)}[kind]
+# Kick quality window, measured on the rendered kick (see kick_quality):
+KICK_TAIL_DB = -20.0          # level 400 ms after the hit (the next beat at 150 BPM) must be below this
+KICK_BRIGHT_DB = (-17.0, -8.0)  # energy above 200 Hz vs below 100 Hz: not dull, not fizzy
+# Envelope after the distortion, per character: (hold seconds, release time constant)
+KICK_AMP = {"punch": (0.08, 0.09), "hard": (0.1, 0.1), "boom": (0.13, 0.12)}
+
+
+def kick_quality(x: np.ndarray) -> tuple[float, float]:
+    """(tail dB at 400 ms, brightness dB) -- what makes a kick sound tight or muddy, clean or fizzy."""
+    w = n_samples(0.01)
+    ref = np.sqrt(np.mean(x[:n_samples(0.03)] ** 2)) + 1e-9
+    i = n_samples(0.4)
+    tail = 20 * np.log10(np.sqrt(np.mean(x[i:i + w] ** 2)) / ref + 1e-9) if len(x) > i + w else -99.0
+    f, p = signal.welch(x, SR, nperseg=4096)
+    bright = 10 * np.log10(p[f >= 200].sum() / (p[f < 100].sum() + 1e-12) + 1e-12)
+    return float(tail), float(bright)
+
+
+def _kick_once(rng, aggression: float) -> np.ndarray:
+    kind = str(rng.choice(["punch", "boom", "hard"]))
+    f_end, f_start = rng.uniform(44, 56), rng.uniform(160, 320)
+    pitch_decay = rng.uniform(0.02, 0.045)
+    decay = {"punch": rng.uniform(0.12, 0.2), "boom": rng.uniform(0.2, 0.32),
+             "hard": rng.uniform(0.15, 0.25)}[kind]
     click_amt = rng.uniform(0.1, 0.4)
     amt = 1.5 + aggression * 6 * rng.uniform(0.7, 1.2)
     tone = 2500 + (1 - aggression) * 6000 * rng.uniform(0.5, 1)
+    hold, rel = KICK_AMP[kind]
+    hold *= rng.uniform(0.85, 1.15)
 
-    n = n_samples(0.8 if kind == "boom" else 0.6)
+    n = n_samples(0.6)
     t = timeline(n)
     freq = f_end + (f_start - f_end) * np.exp(-t / pitch_decay)
     body = np.sin(sweep_phase(freq)) * np.exp(-t / decay)
@@ -105,8 +124,29 @@ def kick(rng, aggression: float) -> np.ndarray:
     if kind == "hard":
         x = np.clip(x * 1.4, -1, 1)
     x = filt(x, "low", tone)
-    x *= np.exp(-t / (decay * 1.5))
+    # parallel distortion: some clean body underneath keeps the sub weight a hard drive eats
+    x = 0.8 * x + 0.35 * body
+    # the distortion flattens the body's decay, so shape the level *after* it (like gating a distorted kick)
+    x *= np.where(t < hold, 1.0, np.exp(-(t - hold) / rel))
     return normalize(fade_out(x))
+
+
+def kick(rng, aggression: float) -> np.ndarray:
+    """Industrial kick: pitch-swept sine + click, driven according to `aggression`.
+
+    Each design is auditioned: a kick that rings into the next beat (mud) or is all
+    distortion fizz is thrown away and re-rolled, like a producer skipping a bad sample."""
+    best, best_err = None, np.inf
+    for _ in range(12):
+        x = _kick_once(rng, aggression)
+        tail, bright = kick_quality(x)
+        lo, hi = KICK_BRIGHT_DB
+        err = max(0.0, tail - KICK_TAIL_DB) + max(0.0, lo - bright) + max(0.0, bright - hi)
+        if err == 0:
+            return x
+        if err < best_err:
+            best, best_err = x, err
+    return best
 
 
 def hat(rng, open_: bool, morph: float) -> np.ndarray:

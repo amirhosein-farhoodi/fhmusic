@@ -62,8 +62,23 @@ makes every track different, while the set still holds together.
 4. **Motif development**: the lead and voice motifs vary every 16–32 bars (transpose, invert, rotate, thin).
 5. **Arrangement grammar**: sections are generated, not fixed: intro, groove, tension, peak, breakdown, break, stripped and outro, in a different order and with different lengths for each track.
 6. **Events**: phrase-end fills, drum cuts, full stops (silence), kick rolls, risers, a moment of silence before the drop, and impacts.
-7. **DJ transitions**: the next track fades in under the outro, the basses swap halfway through, and the tempo glides to the new BPM.
-8. **Set arc**: intensity warms up over the first 3 tracks, then wanders. Style choice follows intensity and avoids repeating the previous style.
+7. **DJ transitions**: the next track is in a compatible key (same root, a fourth or a fifth: harmonic mixing) and fades in under the outro with its low EQ cut (thin kick, no bass). Halfway through the lows swap, the outgoing track fades out, and the tempo glides to the new BPM.
+8. **Bass out before the drop**: half the tension sections play a thin kick with no bass or rumble for their last 2 bars, so the drop lands with the full low end.
+9. **Set arc**: intensity warms up over the first 3 tracks, then wanders. Style choice follows intensity and avoids repeating the previous style.
+
+## 3. Mix and master
+
+Measured on rendered sets (EBU R128 loudness, band energy, stereo correlation) and tuned against
+typical club-techno masters. The numbers are what the engine aims for:
+
+| What | Target | How |
+|---|---|---|
+| Kick | Leads the mix, but bass and music are heard under it | `KICK_LEVEL`, `BASS_LEVEL`; side-chain ducks about -8 dB (`SC_DEPTH`) |
+| Kick sound | Full for ~100 ms, about -10 dB at 200 ms, below -20 dB by the next beat; neither dull nor fizzy | Envelope after the distortion, parallel clean sub, and each kick design is auditioned and re-rolled if it fails (`synth.kick_quality`) |
+| Loudness | About -8 LUFS integrated, -1 dBTP | Master: mono below 120 Hz, soft clipper, 3 ms look-ahead limiter |
+| Width | Low end mono; above 500 Hz the side is about -8 to -13 dB under the mid | Hats panned apart, percussion spread, stereo reverb returns |
+| Groove | Kick and bass exactly on the grid; hats and percussion drift ~1 ms with small level changes | `HUMAN_MS`, per-hit velocity |
+| Breakdowns | A few LU under the peak, standing on a chord bed | The pad always plays in a breakdown when the track has one |
 
 ## Sources
 - [Gearnews: Surgeon's synths and techniques](https://www.gearnews.com/techno-legends-gear-surgeon-synths/)

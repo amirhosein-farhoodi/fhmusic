@@ -42,6 +42,13 @@ SECTION_KINDS = {
 MELODIC = ("pad", "lead", "voice", "arp", "stab")
 MAX_CACHE = 600
 
+# Channel levels (into the master). The kick leads, but bass and music must be heard
+# under it: measured on renders, the old balance left the bass 7-10 dB under the kick.
+KICK_LEVEL = 0.72
+BASS_LEVEL = 0.5
+THIN_KICK_LEVEL = 0.9    # the kick with its lows EQ'd out (DJ bass swap, pre-drop tension)
+HUMAN_MS = 1.2           # tiny timing drift on hats/percussion (std dev); kick and bass stay on the grid
+
 
 @dataclass
 class Section:
@@ -110,13 +117,13 @@ def plan_sections(rng, s: Style) -> list[Section]:
 
 
 class Track:
-    def __init__(self, rng, style: Style):
+    def __init__(self, rng, style: Style, root_midi: int | None = None):
         self.rng = rng
         self.style = s = style
         self.name = f"{rng.choice(ADJ)} {rng.choice(NOUN)}"
         self.scale_name = str(rng.choice(list(s.scales)))
         self.scale = SCALES[self.scale_name]
-        self.root_midi = int(rng.integers(28, 35))  # E1 .. A#1
+        self.root_midi = int(rng.integers(28, 35)) if root_midi is None else int(root_midi)  # E1 .. A#1
         self.root = midi_hz(self.root_midi)
 
         def seed():
@@ -124,6 +131,8 @@ class Track:
 
         # ---- sound design
         self.kick = synth.kick(rng, s.distortion)
+        self.kick_thin = synth.normalize(synth.filt(self.kick, "high", 220, order=4), 0.6)
+        self.thin_tension = False
         self.hat_c = Bank(lambda r, m: synth.hat(r, False, m), seed())
         self.hat_o = Bank(lambda r, m: synth.hat(r, True, m), seed())
         snare_fn = synth.clap if rng.random() < 0.5 else synth.snare
@@ -135,7 +144,7 @@ class Track:
         self.reverb_ir = synth.reverb_ir(rng, 1.2 + 2.8 * s.space * rng.uniform(0.7, 1.2))
         self.rumble_ir = synth.rumble_ir(rng)
         self.rumble_drive = 1.5 + 5 * s.distortion
-        self.wet = 0.2 + 0.25 * s.space
+        self.wet = 0.3 + 0.35 * s.space
 
         # ---- rhythm
         g = s.groove
@@ -145,7 +154,10 @@ class Track:
         self.snare_lane = P.snare_lane(rng)
         self.perc_lanes = [P.euclid_lane(rng, P.lane_length(rng, g), rng.uniform(0.15, 0.45), ghost=g * 0.3)
                            for _ in range(3)]
-        self.perc_pan = [float(rng.uniform(-0.7, 0.7)) for _ in range(3)]
+        self.perc_pan = [float(rng.uniform(-0.8, 0.8)) for _ in range(3)]
+        side = float(rng.choice([-1, 1]))
+        self.hat_pan = side * float(rng.uniform(0.1, 0.3))    # closed and open hats on opposite sides
+        self.hat_o_pan = -side * float(rng.uniform(0.15, 0.35))
         self.noise_lane = P.euclid_lane(rng, P.lane_length(rng, g), rng.uniform(0.1, 0.3))
         self.swing = s.swing * rng.uniform(0.6, 1.3)
 
@@ -239,8 +251,13 @@ class Track:
                     cand.remove(c)
         if sec.kind in ("breakdown", "break"):  # make sure there's music in the background
             mel = [x for x in MELODIC if x in self.enabled]
-            if mel and not self.optional & set(mel):
-                self.optional |= {str(x) for x in rng.choice(mel, size=min(2, len(mel)), replace=False)}
+            if "pad" in mel:  # a breakdown stands on a chord bed
+                self.optional.add("pad")
+            playing = self.optional & set(mel)
+            others = [x for x in mel if x not in playing]
+            if len(playing) < 2 and others:
+                self.optional |= {str(x) for x in rng.choice(others, size=min(2 - len(playing), len(others)),
+                                                             replace=False)}
         self.layers = core | self.optional
 
     def _advance(self):
@@ -271,11 +288,12 @@ class Track:
 
     # ------------------------------------------------------------------ render
 
-    def render_bar(self, ctx: BarCtx, gain_low: float = 1.0, gain_rest: float = 1.0,
+    def render_bar(self, ctx: BarCtx, gain: float = 1.0, low_cut: bool = False,
                    events: bool = True) -> BarOut:
         """Render this track's next bar into the engine buses.
 
-        gain_low: kick/rumble/bass level (DJ bass swap), gain_rest: everything else.
+        gain: the track's fader (DJ transitions fade tracks in and out).
+        low_cut: the DJ's low EQ is off: the kick plays thin, no bass, no rumble.
         events: allow stops/fills/drops (off during DJ transitions)."""
         rng, s, sec = self.rng, self.style, self.section
         b = self.bar_in_sec
@@ -296,6 +314,8 @@ class Track:
 
         if b == 0:
             self.sec_start_energy = self.energy
+            # half the tension sections take the lows out for the last 2 bars, so the drop lands harder
+            self.thin_tension = sec.kind == "tension" and sec.bars >= 4 and rng.random() < 0.5
         if sec.kind == "tension":
             self.energy = self.sec_start_energy + (sec.energy - self.sec_start_energy) * (b + 1) / sec.bars
         else:
@@ -305,8 +325,11 @@ class Track:
         send = np.zeros((2, bar_len + 3 * SR))
         rsend = np.zeros(bar_len + SR)
 
-        def pos(st, swing=False):
-            return int(st * step + (self.swing * step if swing and st % 2 else 0))
+        def pos(st, swing=False, human=False):
+            at = st * step + (self.swing * step if swing and st % 2 else 0)
+            if human:
+                at += float(np.clip(rng.normal(0, HUMAN_MS), -3, 3)) * SR / 1000
+            return max(0, int(at))
 
         def place(bus, x, at, gain, pan=0.0, rev=0.0, delay=0.0):
             if gain <= 0 or at >= bus.shape[-1]:
@@ -355,7 +378,21 @@ class Track:
 
         cut_end = event == "fill" or predrop  # drop kick/bass on the last beat
 
+        gain_low = 0.0 if low_cut else gain
+        gain_rest = gain
+        thin = low_cut or (events and self.thin_tension and b >= sec.bars - 2)
+        if thin and not low_cut:
+            gain_low = 0.0
+
         # ---------------- kick + rumble
+        if "kick" in L and thin and gain_rest > 0:
+            for st in range(16):
+                v, _ = self.kick_lane.at(st)
+                if kick_roll and st >= 8:
+                    v = 0.5 + 0.5 * (st - 8) / 7
+                elif v <= 0 or not drums_on(st) or (cut_end and st >= 12):
+                    continue
+                place(ctx.dry, self.kick_thin, pos(st), THIN_KICK_LEVEL * KICK_LEVEL * v * gain_rest * K)
         if "kick" in L and gain_low > 0:
             for st in range(16):
                 v, _ = self.kick_lane.at(st)
@@ -364,7 +401,7 @@ class Track:
                 elif v <= 0 or not drums_on(st) or (cut_end and st >= 12):
                     continue
                 at = pos(st)
-                place(ctx.dry, self.kick, at, 0.85 * v * gain_low * K)
+                place(ctx.dry, self.kick, at, KICK_LEVEL * v * gain_low * K)
                 if "rumble" in L:
                     n = min(len(self.kick), len(rsend) - at)
                     rsend[at:at + n] += self.kick[:n] * v * s.rumble * gain_low * K
@@ -378,19 +415,21 @@ class Track:
                 for st in range(16):
                     v, p = self.hat_lane.at(gs0 + st)
                     if v > 0 and drums_on(st) and (v >= 0.95 or rng.random() < p * (0.5 + 0.5 * e)):
-                        place(ctx.dry, x, pos(st, True), 0.17 * v * gain_rest * D * rng.uniform(0.85, 1.15), 0.15, 0.05)
+                        place(ctx.dry, x, pos(st, True, True), 0.2 * v * gain_rest * D * rng.uniform(0.85, 1.15),
+                              self.hat_pan, 0.12)
             if "hat_o" in L:
                 x = self.hat_o.pick(1 - M["hat"])
                 for st in range(16):
                     v, p = self.hat_o_lane.at(gs0 + st)
                     if v > 0 and drums_on(st) and rng.random() < p:
-                        place(ctx.dry, x, pos(st, True), 0.2 * v * gain_rest * D, -0.1, 0.1)
+                        place(ctx.dry, x, pos(st, True, True), 0.2 * v * gain_rest * D * rng.uniform(0.9, 1.1),
+                              self.hat_o_pan, 0.18)
             if "snare" in L:
                 x = self.snare.pick(M["snare"])
                 for st in range(16):
                     v, _ = self.snare_lane.at(gs0 + st)
                     if v > 0 and drums_on(st) and not (cut_end and st >= 12):
-                        place(ctx.dry, x, pos(st), 0.4 * v * gain_rest * D, 0.0, 0.25)
+                        place(ctx.dry, x, pos(st), 0.4 * v * gain_rest * D, 0.0, 0.35)
             if event == "fill" or (predrop and sec.kind == "tension"):
                 x = self.snare.pick(0.2)
                 start = 8 if predrop else 12
@@ -404,14 +443,14 @@ class Track:
                 for st in range(16):
                     v, p = self.perc_lanes[i].at(gs0 + st)
                     if v > 0 and drums_on(st) and rng.random() < p * (0.6 + 0.4 * e):
-                        place(ctx.dry, x, pos(st, True), 0.24 * v * gain_rest * D, pan, 0.2 + 0.2 * s.space,
-                              0.0)  # no echo: echoed metal = ringing bell
+                        place(ctx.dry, x, pos(st, True, True), 0.24 * v * gain_rest * D * rng.uniform(0.85, 1.1), pan,
+                              0.25 + 0.25 * s.space)  # no echo: echoed metal = ringing bell
             if "noise" in L:
                 x = self.noise.pick(M["noise"])
                 for st in range(16):
                     v, p = self.noise_lane.at(gs0 + st)
                     if v > 0 and drums_on(st) and rng.random() < p:
-                        place(ctx.dry, x, pos(st), (0.1 + 0.15 * s.noise) * v * gain_rest * D,
+                        place(ctx.dry, x, pos(st, False, True), (0.1 + 0.15 * s.noise) * v * gain_rest * D * rng.uniform(0.85, 1.1),
                               float(rng.uniform(-0.5, 0.5)), 0.2)
 
         # ---------------- bass
@@ -427,11 +466,11 @@ class Track:
                 freq = midi_hz(self.root_midi + 12 + P.deg_semi(deg, self.scale))
                 x = self._cached(("bass", deg, gate, cq, round(step)),
                                  lambda: synth.bass_note(freq, gate * step / SR, cq, self.bass_drive, self.bass_wave))
-                place(ctx.duck, x, pos(st), 0.4 * v * gain_low * B)
+                place(ctx.duck, x, pos(st), BASS_LEVEL * v * gain_low * B)
 
         # ---------------- harmony & melody
         croot = self.progression[(self.bar // self.chord_bars) % len(self.progression)]
-        bg = 2.0 if sec.kind in ("breakdown", "break") else 1.0  # background louder when drums are out
+        bg = 2.6 if sec.kind in ("breakdown", "break") else 1.0  # background louder when drums are out
         if gain_rest > 0:
             if "pad" in L and self.bar % self.chord_bars == 0:
                 dur = self.chord_bars * 16 * step / SR + 0.6
@@ -490,7 +529,7 @@ class Track:
 
         # ---------------- continuous background (cross-faded bar segments)
         for name, lvl in (("atmos", 0.1), ("texture", 0.12)):
-            target = (lvl * (2.2 if bg > 1 else 1) if name in L else 0.0) * gain_rest
+            target = (lvl * (3.0 if bg > 1 else 1) if name in L else 0.0) * gain_rest
             cur = self.levels[name]
             if target or cur > 1e-3:
                 fade = int(0.05 * SR)
